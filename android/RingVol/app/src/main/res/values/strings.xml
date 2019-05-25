@@ -6,4 +6,6 @@
   <string name="title_settings">Settings</string>
   <string name="title_map">Map</string>
   <string name="title_events">Events</string>
+  <string name="set_location_button">Set Location</string>
+  <string name="radius_label">Radius :</string>
 </resources>

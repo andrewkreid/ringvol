@@ -32,7 +32,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
   private FusedLocationProviderClient fusedLocationClient;
 
-  private TextView mTextMessage;
   private View mSettingsView;
   private View mMapView;
   private View mEventView;
@@ -63,13 +62,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
     BottomNavigationView navView = findViewById(R.id.nav_view);
-    mTextMessage = findViewById(R.id.message);
     navView.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
     fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
     mSettingsView = findViewById(R.id.settings_view);
-    mMapView = findViewById(R.id.map);
+    mMapView = findViewById(R.id.map_view);
     mEventView = findViewById(R.id.events_view);
 
     MapFragment mapFragment = (MapFragment) getFragmentManager()
@@ -122,10 +120,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       ActivityCompat.requestPermissions(this,
           new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
           MY_PERMISSIONS_REQUEST_FINE_LOCATION);
-
-      // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-      // app-defined int constant. The callback method gets the
-      // result of the request.
     }
   }
 
