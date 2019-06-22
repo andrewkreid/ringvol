@@ -1,10 +1,12 @@
 package net.ghosttrails.ringvol;
 
 import android.Manifest;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -39,8 +41,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     OnMyLocationClickListener {
 
   private static final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 1337;
-  private static final int DEFAULT_RADIUS_METES = 300;
-  private static final float DEFAULT_ZOOM = 17.0f;
+  private static final int DEFAULT_RADIUS_METERS = 300;
+  private static final float DEFAULT_ZOOM = 15.0f;
 
   private FusedLocationProviderClient fusedLocationClient;
 
@@ -48,8 +50,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private View mapView;
   private View eventView;
   private TextView geofenceLabel;
-  private BottomNavigationView navView;
-  private SeekBar radiusSeekBar;
 
   private GoogleMap mMap;
   private Marker workMarker;
@@ -61,7 +61,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
    * LatLng of the saved work location.
    */
   private LatLng workLatLng;
-  private int radiusMeters = DEFAULT_RADIUS_METES;
+  private int radiusMeters = DEFAULT_RADIUS_METERS;
 
   private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
       = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
-    navView = findViewById(R.id.nav_view);
+    BottomNavigationView navView = findViewById(R.id.nav_view);
     navView.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
     fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
@@ -99,7 +99,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     mapView = findViewById(R.id.map_view);
     eventView = findViewById(R.id.events_view);
     geofenceLabel = findViewById(R.id.geofence_text);
-    radiusSeekBar = findViewById(R.id.radius_seekbar);
+    SeekBar radiusSeekBar = findViewById(R.id.radius_seekbar);
 
     Button setLocationButton = findViewById(R.id.set_location_button);
     setLocationButton.setOnClickListener(new OnClickListener() {
@@ -140,12 +140,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
         workLatLng = new LatLng(lat, lng);
       }
-      radiusMeters = savedInstanceState.getInt("radiusMeters", DEFAULT_RADIUS_METES);
+      radiusMeters = savedInstanceState.getInt("radiusMeters", DEFAULT_RADIUS_METERS);
+    } else {
+      loadFromPreferences();
     }
 
     navView.setSelectedItemId(currentTab);
     radiusSeekBar.setProgress(radiusMeters);
     setGeofenceLabel();
+  }
+
+  @Override
+  protected void onPause() {
+    super.onPause();
+    saveToPreferences();
   }
 
   @Override
@@ -157,6 +165,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       outState.putDouble("workLng", workLatLng.longitude);
     }
     outState.putInt("radiusMeters", radiusMeters);
+  }
+
+  private void saveToPreferences() {
+    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+    SharedPreferences.Editor editor = preferences.edit();
+    if (workLatLng != null) {
+      editor.putFloat("workLat", (float)workLatLng.latitude);
+      editor.putFloat("workLng", (float)workLatLng.longitude);
+    }
+    editor.putInt("radiusMeters", radiusMeters);
+    editor.apply();
+  }
+
+  private void loadFromPreferences() {
+    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+    float lat = preferences.getFloat("workLat", Float.NaN);
+    float lng = preferences.getFloat("workLng", Float.NaN);
+    if (!Float.isNaN(lat) && !Float.isNaN(lng)) {
+      workLatLng = new LatLng(lat, lng);
+    }
+    radiusMeters = preferences.getInt("radiusMeters", DEFAULT_RADIUS_METERS);
   }
 
   @Override
