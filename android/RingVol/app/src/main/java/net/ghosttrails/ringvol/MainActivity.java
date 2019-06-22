@@ -2,15 +2,20 @@ package net.ghosttrails.ringvol;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Location;
 import android.os.Bundle;
-import android.support.design.widget.BottomNavigationView;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AppCompatActivity;
-import android.support.annotation.NonNull;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Button;
+import android.widget.SeekBar;
+import android.widget.SeekBar.OnSeekBarChangeListener;
+import android.widget.TextView;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
@@ -21,22 +26,42 @@ import com.google.android.libraries.maps.GoogleMap.OnMyLocationButtonClickListen
 import com.google.android.libraries.maps.GoogleMap.OnMyLocationClickListener;
 import com.google.android.libraries.maps.MapFragment;
 import com.google.android.libraries.maps.OnMapReadyCallback;
+import com.google.android.libraries.maps.model.Circle;
+import com.google.android.libraries.maps.model.CircleOptions;
 import com.google.android.libraries.maps.model.LatLng;
+import com.google.android.libraries.maps.model.Marker;
+import com.google.android.libraries.maps.model.MarkerOptions;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback,
     OnMyLocationButtonClickListener,
     OnMyLocationClickListener {
 
   private static final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 1337;
+  private static final int DEFAULT_RADIUS_METES = 300;
+  private static final float DEFAULT_ZOOM = 17.0f;
 
   private FusedLocationProviderClient fusedLocationClient;
 
   private View settingsView;
   private View mapView;
   private View eventView;
+  private TextView geofenceLabel;
   private BottomNavigationView navView;
+  private SeekBar radiusSeekBar;
+
   private GoogleMap mMap;
+  private Marker workMarker;
+  private Circle radiusCircle;
+
   private int currentTab;
+
+  /**
+   * LatLng of the saved work location.
+   */
+  private LatLng workLatLng;
+  private int radiusMeters = DEFAULT_RADIUS_METES;
 
   private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
       = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -73,6 +98,34 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     settingsView = findViewById(R.id.settings_view);
     mapView = findViewById(R.id.map_view);
     eventView = findViewById(R.id.events_view);
+    geofenceLabel = findViewById(R.id.geofence_text);
+    radiusSeekBar = findViewById(R.id.radius_seekbar);
+
+    Button setLocationButton = findViewById(R.id.set_location_button);
+    setLocationButton.setOnClickListener(new OnClickListener() {
+      @Override
+      public void onClick(View view) {
+        onSetLocationClick();
+      }
+    });
+
+    radiusSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+      @Override
+      public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+        radiusMeters = i;
+        setGeofenceLabel();
+        setMapMarkers();
+      }
+
+      @Override
+      public void onStartTrackingTouch(SeekBar seekBar) {}
+
+      @Override
+      public void onStopTrackingTouch(SeekBar seekBar) {
+        setGeofenceLabel();
+        setMapMarkers();
+      }
+    });
 
     MapFragment mapFragment = (MapFragment) getFragmentManager()
         .findFragmentById(R.id.map);
@@ -82,15 +135,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     if (savedInstanceState != null) {
       currentTab = savedInstanceState.getInt("currentTab", R.id.navigation_map);
+      double lat = savedInstanceState.getDouble("workLat", Double.NaN);
+      double lng = savedInstanceState.getDouble("workLng", Double.NaN);
+      if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
+        workLatLng = new LatLng(lat, lng);
+      }
+      radiusMeters = savedInstanceState.getInt("radiusMeters", DEFAULT_RADIUS_METES);
     }
 
     navView.setSelectedItemId(currentTab);
+    radiusSeekBar.setProgress(radiusMeters);
+    setGeofenceLabel();
   }
 
   @Override
   protected void onSaveInstanceState(Bundle outState) {
     super.onSaveInstanceState(outState);
     outState.putInt("currentTab", currentTab);
+    if (workLatLng != null) {
+      outState.putDouble("workLat", workLatLng.latitude);
+      outState.putDouble("workLng", workLatLng.longitude);
+    }
+    outState.putInt("radiusMeters", radiusMeters);
   }
 
   @Override
@@ -102,6 +168,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       mMap.setMyLocationEnabled(true);
     } else {
       checkLocationPermission();
+    }
+    if (workLatLng != null) {
+      setMapMarkers();
+      mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(workLatLng, DEFAULT_ZOOM));
     }
   }
 
@@ -139,6 +209,52 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
   }
 
+  private void setGeofenceLabel() {
+    StringBuilder sb = new StringBuilder();
+    sb.append(String.format(Locale.getDefault(), "Radius: %5d", radiusMeters));
+    if (workLatLng != null) {
+      sb.append(String.format(
+          Locale.getDefault(), " (%.3f, %.3f)",
+          workLatLng.latitude,
+          workLatLng.longitude));
+    }
+    geofenceLabel.setText(sb.toString());
+  }
+
+  private void onSetLocationClick() {
+    if (mMap == null) {
+      return;
+    }
+    workLatLng = mMap.getCameraPosition().target;
+    setMapMarkers();
+    setGeofenceLabel();
+  }
+
+  /**
+   * Add or update the marker and radius disc on the map.
+   */
+  private void setMapMarkers() {
+    if (mMap == null || workLatLng == null) {
+      return;
+    }
+
+    if (workMarker != null) {
+      workMarker.remove();
+    }
+    workMarker = mMap.addMarker(new MarkerOptions().position(workLatLng).title("Work"));
+
+    if (radiusCircle != null) {
+      radiusCircle.remove();
+    }
+    radiusCircle = mMap.addCircle(
+        new CircleOptions()
+            .center(workLatLng)
+            .radius(radiusMeters)
+            .fillColor(Color.argb(60, 255, 128, 128))
+            .strokeColor(Color.argb(255, 255, 128, 128)));
+
+  }
+
   private void centerMapOnUserLocation() {
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         == PackageManager.PERMISSION_GRANTED) {
@@ -149,7 +265,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
               // Got last known location. In some rare situations this can be null.
               if (location != null && mMap != null) {
                 // Logic to handle location object
-                CameraUpdate moveCam = CameraUpdateFactory.newLatLng(new LatLng(location.getLatitude(), location.getLongitude()));
+                CameraUpdate moveCam = CameraUpdateFactory
+                    .newLatLng(new LatLng(location.getLatitude(), location.getLongitude()));
                 mMap.moveCamera(moveCam);
               }
             }
