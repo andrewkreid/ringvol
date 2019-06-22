@@ -11,7 +11,6 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.annotation.NonNull;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.TextView;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
@@ -32,10 +31,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
   private FusedLocationProviderClient fusedLocationClient;
 
-  private View mSettingsView;
-  private View mMapView;
-  private View mEventView;
+  private View settingsView;
+  private View mapView;
+  private View eventView;
+  private BottomNavigationView navView;
   private GoogleMap mMap;
+  private int currentTab;
 
   private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
       = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -44,12 +45,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
       switch (item.getItemId()) {
         case R.id.navigation_settings:
+          currentTab = item.getItemId();
           switchToSettings();
           return true;
         case R.id.navigation_map:
+          currentTab = item.getItemId();
           switchToMap();
           return true;
         case R.id.navigation_event:
+          currentTab = item.getItemId();
           switchToEvents();
           return true;
       }
@@ -61,20 +65,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
-    BottomNavigationView navView = findViewById(R.id.nav_view);
+    navView = findViewById(R.id.nav_view);
     navView.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
     fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
-    mSettingsView = findViewById(R.id.settings_view);
-    mMapView = findViewById(R.id.map_view);
-    mEventView = findViewById(R.id.events_view);
+    settingsView = findViewById(R.id.settings_view);
+    mapView = findViewById(R.id.map_view);
+    eventView = findViewById(R.id.events_view);
 
     MapFragment mapFragment = (MapFragment) getFragmentManager()
         .findFragmentById(R.id.map);
     mapFragment.getMapAsync(this);
 
-    switchToSettings();
+    currentTab = R.id.navigation_map;
+
+    if (savedInstanceState != null) {
+      currentTab = savedInstanceState.getInt("currentTab", R.id.navigation_map);
+    }
+
+    navView.setSelectedItemId(currentTab);
+  }
+
+  @Override
+  protected void onSaveInstanceState(Bundle outState) {
+    super.onSaveInstanceState(outState);
+    outState.putInt("currentTab", currentTab);
   }
 
   @Override
@@ -86,40 +102,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       mMap.setMyLocationEnabled(true);
     } else {
       checkLocationPermission();
-    }
-  }
-
-  private void switchToSettings() {
-    mSettingsView.setVisibility(View.VISIBLE);
-    mMapView.setVisibility(View.GONE);
-    mEventView.setVisibility(View.GONE);
-  }
-
-  private void switchToMap() {
-    mSettingsView.setVisibility(View.GONE);
-    mMapView.setVisibility(View.VISIBLE);
-    mEventView.setVisibility(View.GONE);
-  }
-
-  private void switchToEvents() {
-    mSettingsView.setVisibility(View.GONE);
-    mMapView.setVisibility(View.GONE);
-    mEventView.setVisibility(View.VISIBLE);
-  }
-
-  private void checkLocationPermission() {
-    // Permission is not granted
-    // Should we show an explanation?
-    if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-        Manifest.permission.ACCESS_FINE_LOCATION)) {
-      // Show an explanation to the user *asynchronously* -- don't block
-      // this thread waiting for the user's response! After the user
-      // sees the explanation, try again to request the permission.
-    } else {
-      // No explanation needed; request the permission
-      ActivityCompat.requestPermissions(this,
-          new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-          MY_PERMISSIONS_REQUEST_FINE_LOCATION);
     }
   }
 
@@ -174,4 +156,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
           });
     }
   }
+
+  private void switchToSettings() {
+    settingsView.setVisibility(View.VISIBLE);
+    mapView.setVisibility(View.GONE);
+    eventView.setVisibility(View.GONE);
+  }
+
+  private void switchToMap() {
+    settingsView.setVisibility(View.GONE);
+    mapView.setVisibility(View.VISIBLE);
+    eventView.setVisibility(View.GONE);
+  }
+
+  private void switchToEvents() {
+    settingsView.setVisibility(View.GONE);
+    mapView.setVisibility(View.GONE);
+    eventView.setVisibility(View.VISIBLE);
+  }
+
+  private void checkLocationPermission() {
+    // Permission is not granted
+    // Should we show an explanation?
+    if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+        Manifest.permission.ACCESS_FINE_LOCATION)) {
+      // Show an explanation to the user *asynchronously* -- don't block
+      // this thread waiting for the user's response! After the user
+      // sees the explanation, try again to request the permission.
+    } else {
+      // No explanation needed; request the permission
+      ActivityCompat.requestPermissions(this,
+          new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+          MY_PERMISSIONS_REQUEST_FINE_LOCATION);
+    }
+  }
+
 }
