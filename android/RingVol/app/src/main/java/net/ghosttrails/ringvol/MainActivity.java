@@ -1,10 +1,12 @@
 package net.ghosttrails.ringvol;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.view.MenuItem;
@@ -14,6 +16,7 @@ import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -43,6 +46,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private static final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 1337;
   private static final int DEFAULT_RADIUS_METERS = 300;
   private static final float DEFAULT_ZOOM = 15.0f;
+  private static final int DEFAULT_WORK_VOLUME = 30;
+  private static final int DEFAULT_HOME_VOLUME = 100;
 
   private FusedLocationProviderClient fusedLocationClient;
 
@@ -50,6 +55,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private View mapView;
   private View eventView;
   private TextView geofenceLabel;
+  private SeekBar radiusSeekBar;
+  private SeekBar homeVolumeSeekBar;
+  private SeekBar workVolumeSeekBar;
+  private TextView homeVolumeValue;
+  private TextView workVolumeValue;
 
   private GoogleMap mMap;
   private Marker workMarker;
@@ -62,6 +72,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
    */
   private LatLng workLatLng;
   private int radiusMeters = DEFAULT_RADIUS_METERS;
+
+  /**
+   * Volume settings
+   */
+  private int workVolume = DEFAULT_WORK_VOLUME;
+  private int homeVolume = DEFAULT_HOME_VOLUME;
 
   private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
       = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -99,33 +115,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     mapView = findViewById(R.id.map_view);
     eventView = findViewById(R.id.events_view);
     geofenceLabel = findViewById(R.id.geofence_text);
-    SeekBar radiusSeekBar = findViewById(R.id.radius_seekbar);
+    radiusSeekBar = findViewById(R.id.radius_seekbar);
+    workVolumeSeekBar = findViewById(R.id.work_volume_seekbar);
+    homeVolumeSeekBar = findViewById(R.id.home_volume_seekbar);
+    homeVolumeValue = findViewById(R.id.home_volume_value);
+    workVolumeValue = findViewById(R.id.work_volume_value);
 
-    Button setLocationButton = findViewById(R.id.set_location_button);
-    setLocationButton.setOnClickListener(new OnClickListener() {
-      @Override
-      public void onClick(View view) {
-        onSetLocationClick();
-      }
-    });
-
-    radiusSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
-      @Override
-      public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-        radiusMeters = i;
-        setGeofenceLabel();
-        setMapMarkers();
-      }
-
-      @Override
-      public void onStartTrackingTouch(SeekBar seekBar) {}
-
-      @Override
-      public void onStopTrackingTouch(SeekBar seekBar) {
-        setGeofenceLabel();
-        setMapMarkers();
-      }
-    });
+    setupCallbacks();
 
     MapFragment mapFragment = (MapFragment) getFragmentManager()
         .findFragmentById(R.id.map);
@@ -147,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     navView.setSelectedItemId(currentTab);
     radiusSeekBar.setProgress(radiusMeters);
+    setSettingsUIFromValues();
     setGeofenceLabel();
   }
 
@@ -165,16 +162,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       outState.putDouble("workLng", workLatLng.longitude);
     }
     outState.putInt("radiusMeters", radiusMeters);
+    outState.putInt("workVolume", workVolume);
+    outState.putInt("homeVolume", homeVolume);
   }
 
   private void saveToPreferences() {
     SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
     SharedPreferences.Editor editor = preferences.edit();
     if (workLatLng != null) {
-      editor.putFloat("workLat", (float)workLatLng.latitude);
-      editor.putFloat("workLng", (float)workLatLng.longitude);
+      editor.putFloat("workLat", (float) workLatLng.latitude);
+      editor.putFloat("workLng", (float) workLatLng.longitude);
     }
     editor.putInt("radiusMeters", radiusMeters);
+    editor.putInt("homeVolume", homeVolume);
+    editor.putInt("workVolume", workVolume);
     editor.apply();
   }
 
@@ -186,6 +187,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       workLatLng = new LatLng(lat, lng);
     }
     radiusMeters = preferences.getInt("radiusMeters", DEFAULT_RADIUS_METERS);
+    workVolume = preferences.getInt("workVolume", DEFAULT_WORK_VOLUME);
+    homeVolume = preferences.getInt("workVolume", DEFAULT_HOME_VOLUME);
   }
 
   @Override
@@ -236,6 +239,119 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   @Override
   public void onMyLocationClick(Location location) {
 
+  }
+
+  private void setupCallbacks() {
+    Button setLocationButton = findViewById(R.id.set_location_button);
+    setLocationButton.setOnClickListener(new OnClickListener() {
+      @Override
+      public void onClick(View view) {
+        onSetLocationClick();
+      }
+    });
+
+    radiusSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+      @Override
+      public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+        radiusMeters = i;
+        setGeofenceLabel();
+        setMapMarkers();
+      }
+
+      @Override
+      public void onStartTrackingTouch(SeekBar seekBar) {
+      }
+
+      @Override
+      public void onStopTrackingTouch(SeekBar seekBar) {
+        setGeofenceLabel();
+        setMapMarkers();
+      }
+    });
+
+    // Get the granularity of the ringer volume.
+    AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+    int maxVol = am.getStreamMaxVolume(AudioManager.STREAM_RING);
+    // TODO(andrewr): there's a getStreamMinVolume in API 28. Assume 0 for now.
+    homeVolumeSeekBar.setMin(1);
+    homeVolumeSeekBar.setMax(maxVol);
+    workVolumeSeekBar.setMin(1);
+    workVolumeSeekBar.setMax(maxVol);
+    if (homeVolume > maxVol) {
+      homeVolume = maxVol;
+    }
+    if (workVolume > maxVol) {
+      workVolume = maxVol;
+    }
+
+    homeVolumeSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+      @Override
+      public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+        homeVolume = i;
+        setSettingsUIFromValues();
+      }
+
+      @Override
+      public void onStartTrackingTouch(SeekBar seekBar) {
+      }
+
+      @Override
+      public void onStopTrackingTouch(SeekBar seekBar) {
+      }
+    });
+
+    workVolumeSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+      @Override
+      public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+        workVolume = i;
+        setSettingsUIFromValues();
+      }
+
+      @Override
+      public void onStartTrackingTouch(SeekBar seekBar) {
+      }
+
+      @Override
+      public void onStopTrackingTouch(SeekBar seekBar) {
+      }
+    });
+
+    Button testWorkVolumeButton = findViewById(R.id.work_volume_test_button);
+    testWorkVolumeButton.setOnClickListener(new OnClickListener() {
+      @Override
+      public void onClick(View view) {
+        setRingVolume(workVolume);
+      }
+    });
+
+    Button testHomeVolumeButton = findViewById(R.id.home_volume_test_button);
+    testHomeVolumeButton.setOnClickListener(new OnClickListener() {
+      @Override
+      public void onClick(View view) {
+        setRingVolume(homeVolume);
+      }
+    });
+  }
+
+  private void setRingVolume(int volume) {
+    try {
+      AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+      if (am != null) {
+        Toast.makeText(this,
+            String.format(Locale.getDefault(), "newvol: %d", volume),
+            Toast.LENGTH_SHORT).show();
+        am.setStreamVolume(AudioManager.STREAM_RING, volume, 0);
+      }
+    } catch (SecurityException e) {
+      Toast.makeText(this, "SecurityException " + e.getMessage(), Toast.LENGTH_SHORT).show();
+    }
+  }
+
+  private void setSettingsUIFromValues() {
+    workVolumeSeekBar.setProgress(workVolume);
+    homeVolumeSeekBar.setProgress(homeVolume);
+    homeVolumeValue.setText(String.format(Locale.getDefault(), "%3d", homeVolume));
+    workVolumeValue.setText(String.format(Locale.getDefault(), "%3d", workVolume));
   }
 
   private void setGeofenceLabel() {
