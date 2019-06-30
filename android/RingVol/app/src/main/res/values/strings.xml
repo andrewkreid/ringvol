@@ -8,4 +8,6 @@
   <string name="work_volume">Work Volume:</string>
   <string name="button_test">Test</string>
   <string name="home_volume">Home Volume:</string>
+  <string name="enable_geofence">Enable Geofence</string>
+  <string name="test_notification">Test Notification</string>
 </resources>

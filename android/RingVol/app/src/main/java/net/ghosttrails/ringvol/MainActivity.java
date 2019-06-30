@@ -1,7 +1,9 @@
 package net.ghosttrails.ringvol;
 
 import android.Manifest;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -9,12 +11,16 @@ import android.location.Location;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
+import android.widget.CompoundButton;
+import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -22,7 +28,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.GeofencingClient;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.libraries.maps.CameraUpdate;
 import com.google.android.libraries.maps.CameraUpdateFactory;
@@ -43,6 +51,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     OnMyLocationButtonClickListener,
     OnMyLocationClickListener {
 
+  private static String TAG = "RingVol";
+
   private static final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 1337;
   private static final int DEFAULT_RADIUS_METERS = 300;
   private static final float DEFAULT_ZOOM = 15.0f;
@@ -50,6 +60,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private static final int DEFAULT_HOME_VOLUME = 100;
 
   private FusedLocationProviderClient fusedLocationClient;
+  private GeofencingClient geofencingClient;
+  private PendingIntent geofencePendingIntent;
 
   private View settingsView;
   private View mapView;
@@ -60,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private SeekBar workVolumeSeekBar;
   private TextView homeVolumeValue;
   private TextView workVolumeValue;
+  private Switch geofenceEnabledSwitch;
 
   private GoogleMap mMap;
   private Marker workMarker;
@@ -78,6 +91,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
    */
   private int workVolume = DEFAULT_WORK_VOLUME;
   private int homeVolume = DEFAULT_HOME_VOLUME;
+
+  private boolean geofenceEnabled;
 
   private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
       = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -110,6 +125,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     navView.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
     fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+    geofencingClient = LocationServices.getGeofencingClient(this);
 
     settingsView = findViewById(R.id.settings_view);
     mapView = findViewById(R.id.map_view);
@@ -120,6 +136,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     homeVolumeSeekBar = findViewById(R.id.home_volume_seekbar);
     homeVolumeValue = findViewById(R.id.home_volume_value);
     workVolumeValue = findViewById(R.id.work_volume_value);
+    geofenceEnabledSwitch = findViewById(R.id.geofence_enable_switch);
 
     setupCallbacks();
 
@@ -145,6 +162,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     radiusSeekBar.setProgress(radiusMeters);
     setSettingsUIFromValues();
     setGeofenceLabel();
+
+    NotificationHelper.createNotificationChannel(this);
   }
 
   @Override
@@ -164,6 +183,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     outState.putInt("radiusMeters", radiusMeters);
     outState.putInt("workVolume", workVolume);
     outState.putInt("homeVolume", homeVolume);
+    outState.putBoolean("geofenceEnabled", geofenceEnabled);
   }
 
   private void saveToPreferences() {
@@ -176,6 +196,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     editor.putInt("radiusMeters", radiusMeters);
     editor.putInt("homeVolume", homeVolume);
     editor.putInt("workVolume", workVolume);
+    editor.putBoolean("geofenceEnabled", geofenceEnabled);
     editor.apply();
   }
 
@@ -188,7 +209,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
     radiusMeters = preferences.getInt("radiusMeters", DEFAULT_RADIUS_METERS);
     workVolume = preferences.getInt("workVolume", DEFAULT_WORK_VOLUME);
-    homeVolume = preferences.getInt("workVolume", DEFAULT_HOME_VOLUME);
+    homeVolume = preferences.getInt("homeVolume", DEFAULT_HOME_VOLUME);
+    geofenceEnabled = preferences.getBoolean("geofenceEnabled", false);
   }
 
   @Override
@@ -331,6 +353,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         setRingVolume(homeVolume);
       }
     });
+
+    Button testNotificationButton = findViewById(R.id.test_notification_button);
+    testNotificationButton.setOnClickListener(new OnClickListener() {
+      @Override
+      public void onClick(View view) {
+        NotificationHelper.sendNotification(MainActivity.this, "Test Name", "Test Description");
+      }
+    });
+
+    geofenceEnabledSwitch.setOnCheckedChangeListener(new OnCheckedChangeListener() {
+      @Override
+      public void onCheckedChanged(CompoundButton compoundButton, boolean isChecked) {
+        geofenceEnabled = isChecked;
+        updateGeofenceTracking();
+      }
+    });
   }
 
   private void setRingVolume(int volume) {
@@ -352,6 +390,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     homeVolumeSeekBar.setProgress(homeVolume);
     homeVolumeValue.setText(String.format(Locale.getDefault(), "%3d", homeVolume));
     workVolumeValue.setText(String.format(Locale.getDefault(), "%3d", workVolume));
+    geofenceEnabledSwitch.setChecked(geofenceEnabled);
   }
 
   private void setGeofenceLabel() {
@@ -451,6 +490,72 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
           new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
           MY_PERMISSIONS_REQUEST_FINE_LOCATION);
     }
+  }
+
+  /** Add or remove geofence listeners */
+  private void updateGeofenceTracking() {
+    removeGeofenceTracking();
+    if (geofenceEnabled) {
+      addGeofenceTracking();
+    }
+  }
+
+  private void addGeofenceTracking() {
+    if (workLatLng == null) {
+      return;
+    }
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        == PackageManager.PERMISSION_GRANTED) {
+      geofencingClient.addGeofences(
+          GeofenceHelper.getGeofencingRequest(workLatLng, radiusMeters),
+          getGeofencePendingIntent())
+          .addOnSuccessListener(this, new OnSuccessListener<Void>() {
+            @Override
+            public void onSuccess(Void aVoid) {
+              Log.i(TAG, "Added Geofence");
+              Toast.makeText(MainActivity.this, "Added Geofence", Toast.LENGTH_SHORT).show();
+            }
+          })
+          .addOnFailureListener(this, new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+              Log.e(TAG, "Error Adding Geofence: ", e);
+              Toast.makeText(MainActivity.this, "Error adding Geofence", Toast.LENGTH_SHORT).show();
+            }
+          });
+    } else {
+      checkLocationPermission();
+    }
+  }
+
+  private void removeGeofenceTracking() {
+    geofencingClient.removeGeofences(getGeofencePendingIntent())
+        .addOnSuccessListener(this, new OnSuccessListener<Void>() {
+          @Override
+          public void onSuccess(Void aVoid) {
+            Toast.makeText(MainActivity.this, "Removed Geofence", Toast.LENGTH_SHORT).show();
+          }
+        })
+        .addOnFailureListener(this, new OnFailureListener() {
+          @Override
+          public void onFailure(@NonNull Exception e) {
+            Log.e(TAG, "Error removing Geofence: ", e);
+            Toast.makeText(MainActivity.this, "Error removing Geofence", Toast.LENGTH_SHORT).show();
+          }
+        });
+  }
+
+  private PendingIntent getGeofencePendingIntent() {
+    // Reuse the PendingIntent if we already have it.
+    if (geofencePendingIntent != null) {
+      return geofencePendingIntent;
+    }
+    Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
+    // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
+    // calling addGeofences() and removeGeofences().
+    geofencePendingIntent = PendingIntent.getService(this, 0, intent, PendingIntent.
+        FLAG_UPDATE_CURRENT);
+    return geofencePendingIntent;
   }
 
 }
