@@ -56,8 +56,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private static final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 1337;
   private static final int DEFAULT_RADIUS_METERS = 300;
   private static final float DEFAULT_ZOOM = 15.0f;
-  private static final int DEFAULT_WORK_VOLUME = 30;
-  private static final int DEFAULT_HOME_VOLUME = 100;
+
+  public static final int DEFAULT_WORK_VOLUME = 3;
+  public static final int DEFAULT_HOME_VOLUME = 10;
 
   private FusedLocationProviderClient fusedLocationClient;
   private GeofencingClient geofencingClient;
@@ -168,8 +169,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
   @Override
   protected void onPause() {
-    super.onPause();
     saveToPreferences();
+    super.onPause();
   }
 
   @Override
@@ -342,7 +343,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     testWorkVolumeButton.setOnClickListener(new OnClickListener() {
       @Override
       public void onClick(View view) {
-        setRingVolume(workVolume);
+        RingVolumeHelper.setRingVolume(MainActivity.this, workVolume);
       }
     });
 
@@ -350,7 +351,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     testHomeVolumeButton.setOnClickListener(new OnClickListener() {
       @Override
       public void onClick(View view) {
-        setRingVolume(homeVolume);
+        RingVolumeHelper.setRingVolume(MainActivity.this, homeVolume);
       }
     });
 
@@ -369,20 +370,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         updateGeofenceTracking();
       }
     });
-  }
-
-  private void setRingVolume(int volume) {
-    try {
-      AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-      if (am != null) {
-        Toast.makeText(this,
-            String.format(Locale.getDefault(), "newvol: %d", volume),
-            Toast.LENGTH_SHORT).show();
-        am.setStreamVolume(AudioManager.STREAM_RING, volume, 0);
-      }
-    } catch (SecurityException e) {
-      Toast.makeText(this, "SecurityException " + e.getMessage(), Toast.LENGTH_SHORT).show();
-    }
   }
 
   private void setSettingsUIFromValues() {
@@ -412,6 +399,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     workLatLng = mMap.getCameraPosition().target;
     setMapMarkers();
     setGeofenceLabel();
+    updateGeofenceTracking();
+    saveToPreferences();
   }
 
   /**
@@ -534,6 +523,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
           @Override
           public void onSuccess(Void aVoid) {
             Toast.makeText(MainActivity.this, "Removed Geofence", Toast.LENGTH_SHORT).show();
+            Log.i(TAG, "Removed Geofence");
           }
         })
         .addOnFailureListener(this, new OnFailureListener() {
@@ -550,12 +540,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     if (geofencePendingIntent != null) {
       return geofencePendingIntent;
     }
-    Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
+    Intent intent = new Intent(this, GeofenceBroadcastReceiver.class);
+    intent.setAction(GeofenceBroadcastReceiver.GEOFENCE_ACTION);
     // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
     // calling addGeofences() and removeGeofences().
-    geofencePendingIntent = PendingIntent.getService(this, 0, intent, PendingIntent.
-        FLAG_UPDATE_CURRENT);
+    geofencePendingIntent = PendingIntent.getBroadcast(this, 0, intent,
+        PendingIntent.FLAG_UPDATE_CURRENT);
     return geofencePendingIntent;
   }
-
 }

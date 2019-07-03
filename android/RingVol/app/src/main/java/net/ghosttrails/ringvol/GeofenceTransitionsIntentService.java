@@ -1,32 +1,41 @@
 package net.ghosttrails.ringvol;
 
+import static net.ghosttrails.ringvol.MainActivity.DEFAULT_HOME_VOLUME;
+
 import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.util.Log;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.app.JobIntentService;
 import com.google.android.gms.location.Geofence;
 import com.google.android.gms.location.GeofenceStatusCodes;
 import com.google.android.gms.location.GeofencingEvent;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GeofenceTransitionsIntentService extends IntentService {
+public class GeofenceTransitionsIntentService extends JobIntentService {
 
-  private static String TAG = "GeofenceTransitionsIntentService";
+  private static String TAG = "ringVol.GeofenceTransitionsIntentService";
 
-  GeofenceTransitionsIntentService() {
-    super(GeofenceTransitionsIntentService.class.getSimpleName());
+  static final int JOB_ID = 1000;
+
+  static void enqueueWork(Context context, Intent work) {
+    enqueueWork(context, GeofenceTransitionsIntentService.class, JOB_ID, work);
   }
 
-  protected void onHandleIntent(Intent intent) {
-    GeofencingEvent geofencingEvent = GeofencingEvent.fromIntent(intent);
+  @Override
+  protected void onHandleWork(@NonNull Intent intent) {
+   GeofencingEvent geofencingEvent = GeofencingEvent.fromIntent(intent);
     if (geofencingEvent.hasError()) {
-      //String errorMessage = GeofenceErrorMessages.getErrorString(this,
-      //    geofencingEvent.getErrorCode());
       Log.e(TAG, GeofenceStatusCodes.getStatusCodeString(geofencingEvent.getErrorCode()));
       return;
     }
+    Log.i(TAG, "Got Intent");
 
     // Get the transition type.
     int geofenceTransition = geofencingEvent.getGeofenceTransition();
@@ -44,6 +53,8 @@ public class GeofenceTransitionsIntentService extends IntentService {
           geofenceTransition,
           triggeringGeofences
       );
+
+      setVolume(geofenceTransition);
 
       // Send notification and log the transition details.
       NotificationHelper.sendNotification(this, "Geofence Event", geofenceTransitionDetails);
@@ -82,4 +93,20 @@ public class GeofenceTransitionsIntentService extends IntentService {
         return "Geofence Unknown transition";
     }
   }
+
+  private void setVolume(int mode) {
+    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+    if (mode == Geofence.GEOFENCE_TRANSITION_DWELL) {
+      if (preferences.contains("workVolume")) {
+        int workVolume = preferences.getInt("workVolume", MainActivity.DEFAULT_WORK_VOLUME);
+        RingVolumeHelper.setRingVolume(this, workVolume);
+      }
+    } else if (mode == Geofence.GEOFENCE_TRANSITION_EXIT) {
+      int homeVolume = preferences.getInt("homeVolume", DEFAULT_HOME_VOLUME);
+      RingVolumeHelper.setRingVolume(this, homeVolume);
+    } else {
+      Log.e(TAG, "Unrecognised transition type " + mode);
+    }
+  }
+
 }

@@ -4,6 +4,7 @@
   package="net.ghosttrails.ringvol">
 
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <application
     android:icon="@mipmap/ringvol_launcher"
     android:label="@string/app_name"
@@ -35,7 +36,18 @@
     </activity>
 
     <!-- Listener for geofence events -->
-    <service android:name=".GeofenceTransitionsIntentService"/>
+    <service
+      android:name=".GeofenceTransitionsIntentService"
+      android:permission="android.permission.BIND_JOB_SERVICE"/>
+
+    <receiver android:name=".GeofenceBroadcastReceiver"
+      android:exported="true">
+      <!--
+      <intent-filter>
+        <action android:name="net.ghosttrails.ringvol.action.GEOFENCE_ACTION" />
+      </intent-filter>
+      -->
+    </receiver>
   </application>
 
 </manifest>
