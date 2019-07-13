@@ -3,14 +3,11 @@ package net.ghosttrails.ringvol;
 import android.Manifest;
 import android.app.PendingIntent;
 import android.content.Context;
-import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.media.AudioManager;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
@@ -54,11 +51,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   private static String TAG = "RingVol";
 
   private static final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 1337;
-  private static final int DEFAULT_RADIUS_METERS = 300;
   private static final float DEFAULT_ZOOM = 15.0f;
-
-  public static final int DEFAULT_WORK_VOLUME = 3;
-  public static final int DEFAULT_HOME_VOLUME = 10;
 
   private FusedLocationProviderClient fusedLocationClient;
   private GeofencingClient geofencingClient;
@@ -85,13 +78,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
    * LatLng of the saved work location.
    */
   private LatLng workLatLng;
-  private int radiusMeters = DEFAULT_RADIUS_METERS;
+  private int radiusMeters = SavedPreferences.DEFAULT_RADIUS_METERS;
 
   /**
    * Volume settings
    */
-  private int workVolume = DEFAULT_WORK_VOLUME;
-  private int homeVolume = DEFAULT_HOME_VOLUME;
+  private int workVolume = SavedPreferences.DEFAULT_WORK_VOLUME;
+  private int homeVolume = SavedPreferences.DEFAULT_HOME_VOLUME;
 
   private boolean geofenceEnabled;
 
@@ -154,7 +147,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
       if (!Double.isNaN(lat) && !Double.isNaN(lng)) {
         workLatLng = new LatLng(lat, lng);
       }
-      radiusMeters = savedInstanceState.getInt("radiusMeters", DEFAULT_RADIUS_METERS);
+      radiusMeters = savedInstanceState.getInt(
+          "radiusMeters", SavedPreferences.DEFAULT_RADIUS_METERS);
     } else {
       loadFromPreferences();
     }
@@ -188,30 +182,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
   }
 
   private void saveToPreferences() {
-    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-    SharedPreferences.Editor editor = preferences.edit();
-    if (workLatLng != null) {
-      editor.putFloat("workLat", (float) workLatLng.latitude);
-      editor.putFloat("workLng", (float) workLatLng.longitude);
-    }
-    editor.putInt("radiusMeters", radiusMeters);
-    editor.putInt("homeVolume", homeVolume);
-    editor.putInt("workVolume", workVolume);
-    editor.putBoolean("geofenceEnabled", geofenceEnabled);
-    editor.apply();
+    SavedPreferences savedPreferences = new SavedPreferences(
+        this,
+        workLatLng,
+        radiusMeters,
+        workVolume,
+        homeVolume,
+        geofenceEnabled);
+    savedPreferences.saveToPreferences();
   }
 
   private void loadFromPreferences() {
-    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-    float lat = preferences.getFloat("workLat", Float.NaN);
-    float lng = preferences.getFloat("workLng", Float.NaN);
-    if (!Float.isNaN(lat) && !Float.isNaN(lng)) {
-      workLatLng = new LatLng(lat, lng);
-    }
-    radiusMeters = preferences.getInt("radiusMeters", DEFAULT_RADIUS_METERS);
-    workVolume = preferences.getInt("workVolume", DEFAULT_WORK_VOLUME);
-    homeVolume = preferences.getInt("homeVolume", DEFAULT_HOME_VOLUME);
-    geofenceEnabled = preferences.getBoolean("geofenceEnabled", false);
+    SavedPreferences savedPreferences = new SavedPreferences(this);
+    savedPreferences.loadFromPreferences();
+
+    workLatLng = savedPreferences.getWorkLatLng();
+    radiusMeters = savedPreferences.getRadiusMeters();
+    workVolume = savedPreferences.getWorkVolume();
+    homeVolume = savedPreferences.getHomeVolume();
+    geofenceEnabled = savedPreferences.isGeofenceEnabled();
   }
 
   @Override
@@ -540,12 +529,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     if (geofencePendingIntent != null) {
       return geofencePendingIntent;
     }
-    Intent intent = new Intent(this, GeofenceBroadcastReceiver.class);
-    intent.setAction(GeofenceBroadcastReceiver.GEOFENCE_ACTION);
-    // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
-    // calling addGeofences() and removeGeofences().
-    geofencePendingIntent = PendingIntent.getBroadcast(this, 0, intent,
-        PendingIntent.FLAG_UPDATE_CURRENT);
+    geofencePendingIntent = GeofenceHelper.makeGeofencePendingIntent(this);
     return geofencePendingIntent;
   }
 }

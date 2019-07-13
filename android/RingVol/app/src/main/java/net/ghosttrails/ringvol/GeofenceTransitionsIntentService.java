@@ -1,6 +1,7 @@
 package net.ghosttrails.ringvol;
 
-import static net.ghosttrails.ringvol.MainActivity.DEFAULT_HOME_VOLUME;
+import static net.ghosttrails.ringvol.SavedPreferences.DEFAULT_HOME_VOLUME;
+import static net.ghosttrails.ringvol.SavedPreferences.DEFAULT_WORK_VOLUME;
 
 import android.app.IntentService;
 import android.content.Context;
@@ -98,7 +99,7 @@ public class GeofenceTransitionsIntentService extends JobIntentService {
     SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
     if (mode == Geofence.GEOFENCE_TRANSITION_DWELL) {
       if (preferences.contains("workVolume")) {
-        int workVolume = preferences.getInt("workVolume", MainActivity.DEFAULT_WORK_VOLUME);
+        int workVolume = preferences.getInt("workVolume", DEFAULT_WORK_VOLUME);
         RingVolumeHelper.setRingVolume(this, workVolume);
       }
     } else if (mode == Geofence.GEOFENCE_TRANSITION_EXIT) {

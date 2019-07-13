@@ -1,5 +1,8 @@
 package net.ghosttrails.ringvol;
 
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
 import android.util.Log;
 import com.google.android.gms.location.Geofence;
 import com.google.android.gms.location.GeofencingRequest;
@@ -22,6 +25,15 @@ class GeofenceHelper {
     GeofencingRequest request = builder.build();
     Log.i(TAG, request.toString());
     return request;
+  }
+
+  static PendingIntent makeGeofencePendingIntent(Context context) {
+    Intent intent = new Intent(context, GeofenceBroadcastReceiver.class);
+    intent.setAction(GeofenceBroadcastReceiver.GEOFENCE_ACTION);
+    // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
+    // calling addGeofences() and removeGeofences().
+    return PendingIntent.getBroadcast(context, 0, intent,
+        PendingIntent.FLAG_UPDATE_CURRENT);
   }
 
   private static List<Geofence> getGeofenceList(LatLng latLng, int radiusMeters) {
